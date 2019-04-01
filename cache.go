@@ -1,9 +1,9 @@
 package memory_cache
 
 import (
+	"memory_cache/list"
 	"sync"
 	"time"
-	"memory_cache/list"
 )
 
 //--------------------------------------
@@ -113,11 +113,11 @@ func NewViewHistory(size int, expire time.Duration, k int) *ViewHistory {
 	}
 }
 
-func (this *ViewHistory) Put(key string) (new *list.Element, old string) {
+func (this *ViewHistory) Put(key string) (new *list.Element, old *list.Element) {
 	view := NewItemViews(key)
 	new = this.items.Insert(nil, view)
 	if this.items.Size > this.size {
-		old = this.items.Tail.Data.(*ItemViews).key
+		old = this.items.Tail
 		this.items.Delete(this.items.Tail)
 	}
 	return
@@ -129,7 +129,7 @@ func (this *ViewHistory) UpdateView(pointer *list.Element) (cached bool) {
 		cached = true
 		return
 	}
-	this.items.Insert(nil, pointer)
+	this.items.Insert(nil, pointer.Data)
 	return
 }
 
@@ -151,10 +151,10 @@ func NewMemoryCache(size int, expire time.Duration) *MemoryCache {
 	}
 }
 
-func (this *MemoryCache) Put(i *ItemViews, data interface{}) (new *list.Element, old string) {
+func (this *MemoryCache) Put(i *ItemViews, data interface{}) (new *list.Element, old *list.Element) {
 	new = this.items.Insert(nil, NewCacheItem(i.Reset(), data))
 	if this.items.Size > this.size {
-		old = this.items.Tail.Data.(*CacheItem).views.key
+		old = this.items.Tail
 		this.items.Delete(this.items.Tail)
 	}
 	return
@@ -163,7 +163,7 @@ func (this *MemoryCache) Put(i *ItemViews, data interface{}) (new *list.Element,
 func (this *MemoryCache) UpdateData(pointer *list.Element, data interface{}) {
 	pointer.Data.(*CacheItem).data = data
 	this.items.Delete(pointer)
-	this.items.Insert(nil, pointer)
+	this.items.Insert(nil, pointer.Data)
 }
 
 func (this *MemoryCache) UpdateView(pointer *list.Element) (expired bool) {
@@ -171,7 +171,7 @@ func (this *MemoryCache) UpdateView(pointer *list.Element) (expired bool) {
 	if _, expired = pointer.Data.(*CacheItem).views.UpdateWithExpireExam(this.expire); expired {
 		return
 	}
-	this.items.Insert(nil, pointer)
+	this.items.Insert(nil, pointer.Data)
 	return
 }
 
@@ -207,8 +207,8 @@ func (this *MemoryCacheManager) Get(key string) (data interface{}) {
 			n, old := this.cache.Put(val.(*list.Element).Data.(*ItemViews), nil)
 			this.historyMap.Delete(key)
 			this.cacheMap.Store(key, n)
-			if len(old) != 0 {
-				this.cacheMap.Delete(old)
+			if old != nil {
+				this.cacheMap.Delete(old.Data.(*CacheItem).views.key)
 			}
 		}
 	} else if val, ok = this.cacheMap.Load(key); ok {
@@ -230,8 +230,8 @@ func (this *MemoryCacheManager) Get(key string) (data interface{}) {
 	} else {
 		n, old := this.history.Put(key)
 		this.historyMap.Store(key, n)
-		if len(old) != 0 {
-			this.historyMap.Delete(old)
+		if old != nil {
+			this.historyMap.Delete(old.Data.(*ItemViews).key)
 		}
 	}
 	return
@@ -249,6 +249,3 @@ func (this *MemoryCacheManager) Put(key string, data interface{}) {
 	}
 	this.cache.UpdateData(val.(*list.Element), data)
 }
-
-
-
